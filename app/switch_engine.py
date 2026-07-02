@@ -97,6 +97,14 @@ class SwitchEngine:
         if not eligible:
             return  # hold last shot, nobody's talking
 
+        g = self.config["global"]
+        distinct_recent = {
+            mid for (mid, at) in self.recent_talk_starts if now_ms - at <= g["crosstalkWindowMs"]
+        }
+        if len(distinct_recent) > 1 and g.get("crosstalkBiasCameraId"):
+            self._apply_switch(now_ms, None, g["crosstalkBiasCameraId"])
+            return
+
         winner = None
         for m in eligible:
             if winner is None:
@@ -115,7 +123,7 @@ class SwitchEngine:
             active_state = self.mic_state.get(self.active_mic_id)
             if active_state and active_state.talking:
                 winner_level = self.mic_state[winner["id"]].level
-                if winner_level - active_state.level < self.config["global"]["hysteresisDb"]:
+                if winner_level - active_state.level < g["hysteresisDb"]:
                     active_mic_config = next(
                         (m for m in self.config["mics"] if m["id"] == self.active_mic_id), None
                     )

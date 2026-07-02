@@ -173,3 +173,33 @@ def test_hysteresis_does_not_apply_once_active_mic_stops_talking():
 
     # mic2 barely beats mic1's old threshold but mic1 isn't talking, so no hysteresis check applies
     assert engine.active_camera_id == "cam2"
+
+
+def test_crosstalk_bias_cuts_to_wide_shot():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    engine.set_config(make_engine_config())  # crosstalkWindowMs=300, biasCameraId=cam3
+
+    # Both mics cross the attack threshold on the same tick, so both talk-starts land
+    # within the crosstalk window and the wide-shot cut is the first (un-gated) cut.
+    # (If one mic triggered a solo cut first, min-shot-hold would correctly suppress
+    # the subsequent crosstalk cut — see test_crosstalk_gated_by_min_shot_hold_...)
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=100)  # both start talking at t=100
+
+    assert engine.active_camera_id == "cam3"
+    assert atem.calls[-1] == ("cut", 3)
+
+
+def test_no_crosstalk_when_talk_starts_are_far_apart():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    engine.set_config(make_engine_config())
+
+    engine.update_levels({"mic1": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20}, now_ms=100)  # mic1 talking at t=100
+
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=900)
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=1000)  # mic2 talking at t=1000, outside window
+
+    assert engine.active_camera_id != "cam3"
