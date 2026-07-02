@@ -111,6 +111,18 @@ class SwitchEngine:
                 ml = self.mic_state[m["id"]].level
                 winner = m if ml > bl else winner
 
+        if self.active_mic_id and self.active_mic_id != winner["id"]:
+            active_state = self.mic_state.get(self.active_mic_id)
+            if active_state and active_state.talking:
+                winner_level = self.mic_state[winner["id"]].level
+                if winner_level - active_state.level < self.config["global"]["hysteresisDb"]:
+                    active_mic_config = next(
+                        (m for m in self.config["mics"] if m["id"] == self.active_mic_id), None
+                    )
+                    target_camera_id = active_mic_config["cameraId"] if active_mic_config else winner["cameraId"]
+                    self._apply_switch(now_ms, self.active_mic_id, target_camera_id)
+                    return
+
         self._apply_switch(now_ms, winner["id"], winner["cameraId"])
 
     def _apply_switch(self, now_ms, mic_id, camera_id):
