@@ -59,7 +59,8 @@ class SwitchEngine:
             if clipping_by_mic_id:
                 state.clipping = bool(clipping_by_mic_id.get(mic["id"], False))
 
-            is_above = state.level >= mic["thresholdDb"]
+            threshold = self._effective_threshold_db(mic, state)
+            is_above = state.level >= threshold
             if is_above:
                 if state.above_since is None:
                     state.above_since = now_ms
@@ -73,6 +74,16 @@ class SwitchEngine:
                 state.above_since = None
                 if state.talking and now_ms - state.below_since >= g["releaseHoldMs"]:
                     state.talking = False
+
+            if not state.talking:
+                adv = g.get("advanced", {})
+                nf_cfg = adv.get("noiseFloorAdaptive", {"enabled": False})
+                if nf_cfg.get("enabled"):
+                    state.noise_floor_samples.append((now_ms, state.level))
+                    window_ms = nf_cfg.get("adaptWindowSec", 30) * 1000
+                    state.noise_floor_samples = [
+                        (t, lvl) for (t, lvl) in state.noise_floor_samples if now_ms - t <= window_ms
+                    ]
 
         self.recent_talk_starts = [
             (mid, at) for (mid, at) in self.recent_talk_starts if now_ms - at <= g["crosstalkWindowMs"]
@@ -91,6 +102,17 @@ class SwitchEngine:
             state.level = levels_by_mic_id[mic["id"]]
             if clipping_by_mic_id:
                 state.clipping = bool(clipping_by_mic_id.get(mic["id"], False))
+
+    def _effective_threshold_db(self, mic, state):
+        adv = self.config["global"].get("advanced", {})
+        nf_cfg = adv.get("noiseFloorAdaptive", {"enabled": False})
+        if not nf_cfg.get("enabled"):
+            return mic["thresholdDb"]
+        samples = [lvl for (_, lvl) in state.noise_floor_samples]
+        if not samples:
+            return mic["thresholdDb"]
+        noise_floor = sum(samples) / len(samples)
+        return noise_floor + nf_cfg.get("marginDb", 10)
 
     def _decide_and_switch(self, now_ms):
         eligible = [m for m in self.config["mics"] if m["enabled"] and self.mic_state[m["id"]].talking]

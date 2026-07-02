@@ -203,3 +203,46 @@ def test_no_crosstalk_when_talk_starts_are_far_apart():
     engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=1000)  # mic2 talking at t=1000, outside window
 
     assert engine.active_camera_id != "cam3"
+
+
+def test_adaptive_threshold_disabled_uses_static_threshold():
+    engine = SwitchEngine(FakeAtemController())
+    cfg = make_engine_config()
+    engine.set_config(cfg)
+    # -36 is below the static -35 threshold; mic should not trigger even after long silence sampling
+    for t in range(0, 1000, 50):
+        engine.update_levels({"mic1": -36}, now_ms=t)
+    assert engine.mic_state["mic1"].talking is False
+
+
+def test_adaptive_threshold_tracks_rising_noise_floor():
+    engine = SwitchEngine(FakeAtemController())
+    cfg = make_engine_config()
+    cfg["global"]["advanced"]["noiseFloorAdaptive"] = {
+        "enabled": True, "marginDb": 5, "adaptWindowSec": 1,
+    }
+    engine.set_config(cfg)
+
+    # HVAC-like noise floor rises to -30dB while mic1 stays silent (never talks: below effective threshold)
+    for t in range(0, 900, 50):
+        engine.update_levels({"mic1": -30}, now_ms=t)
+    assert engine.mic_state["mic1"].talking is False  # -30 is below noiseFloor(-30)+margin(5) once tracked
+
+    # now a real talker at -20dB should trigger against the adapted floor (~-30+5=-25)
+    engine.update_levels({"mic1": -20}, now_ms=900)
+    engine.update_levels({"mic1": -20}, now_ms=1000)
+    assert engine.mic_state["mic1"].talking is True
+
+
+def test_adaptive_threshold_window_prunes_old_samples():
+    engine = SwitchEngine(FakeAtemController())
+    cfg = make_engine_config()
+    cfg["global"]["advanced"]["noiseFloorAdaptive"] = {
+        "enabled": True, "marginDb": 5, "adaptWindowSec": 1,
+    }
+    engine.set_config(cfg)
+    engine.update_levels({"mic1": -30}, now_ms=0)
+    # jump far beyond the 1s window; old sample should be pruned so the floor resets
+    engine.update_levels({"mic1": -90}, now_ms=5000)
+    state = engine.mic_state["mic1"]
+    assert all(t >= 4000 for t, _ in state.noise_floor_samples)
