@@ -68,3 +68,23 @@ def test_presets_round_trip(client):
 
     res = client.get("/api/presets/does-not-exist")
     assert res.status_code == 404
+
+
+def test_engine_enabled_toggle_updates_top_level_config_field(client):
+    res = client.post("/api/engine/enabled", json={"enabled": True})
+    assert res.status_code == 200
+    assert client.get("/api/config").json()["enabled"] is True
+
+
+def test_status_reports_atem_and_audio(client):
+    res = client.get("/api/status")
+    assert res.status_code == 200
+    body = res.json()
+    assert "atem" in body and "connected" in body["atem"]
+    assert "audio" in body and "running" in body["audio"]
+
+
+def test_atem_connect_persists_ip(client):
+    res = client.post("/api/atem/connect", json={"ip": "10.0.0.5"})
+    assert res.status_code == 200
+    assert client.get("/api/config").json()["atem"]["ip"] == "10.0.0.5"

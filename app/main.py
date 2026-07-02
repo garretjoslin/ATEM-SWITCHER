@@ -1,4 +1,5 @@
 # app/main.py
+import asyncio
 import os
 from pathlib import Path
 
@@ -20,6 +21,10 @@ state = {
     "last_levels_at": None,
     "latest_levels": {},
 }
+
+from app.atem_controller import AtemController
+
+atem_controller = AtemController()
 
 
 @app.get("/api/config")
@@ -73,3 +78,43 @@ def load_preset_route(name: str):
     state["config"] = preset
     config_store.save_config(preset, base_dir=_config_base_dir)
     return {"ok": True}
+
+
+@app.post("/api/atem/connect")
+async def atem_connect(request: Request):
+    body = await request.json()
+    ip = body.get("ip") or state["config"]["atem"]["ip"]
+    state["config"]["atem"]["ip"] = ip
+    config_store.save_config(state["config"], base_dir=_config_base_dir)
+    atem_controller.connect(ip)
+    return {"ok": True}
+
+
+@app.post("/api/engine/enabled")
+async def engine_enabled(request: Request):
+    body = await request.json()
+    state["config"]["enabled"] = bool(body.get("enabled"))
+    config_store.save_config(state["config"], base_dir=_config_base_dir)
+    return {"ok": True}
+
+
+@app.get("/api/status")
+def get_status():
+    ltc_reader = state.get("ltc_reader")
+    return {
+        "atem": atem_controller.get_status(),
+        "audio": {"running": state["audio_source"] is not None},
+        "timecode": {
+            "enabled": state["config"]["timecode"]["enabled"],
+            "hasSignal": ltc_reader.has_signal() if ltc_reader else False,
+        },
+    }
+
+
+@app.on_event("startup")
+async def on_startup():
+    if os.environ.get("MIC_CAM_SKIP_STARTUP"):
+        return
+    if state["config"]["atem"]["ip"]:
+        atem_controller.connect(state["config"]["atem"]["ip"])
+    asyncio.create_task(atem_controller.maintain_connection())
