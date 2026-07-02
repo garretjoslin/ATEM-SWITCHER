@@ -1,0 +1,16 @@
+{
+  "name": "mic-cam-switcher",
+  "version": "1.0.0",
+  "description": "Automatic mic-to-camera switcher for Blackmagic ATEM, driven by live audio levels",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "atem-connection": "^3.4.0",
+    "express": "^4.19.2",
+    "naudiodon2": "^2.4.2",
+    "ws": "^8.17.0"
+  }
+}

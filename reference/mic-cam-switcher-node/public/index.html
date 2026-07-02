@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Mic → Cam Switcher</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>Mic → Cam Switcher</h1>
+  <div class="header-controls">
+    <label>ATEM IP <input id="atemIp" type="text" /></label>
+    <button id="atemConnectBtn">Connect</button>
+    <span id="atemStatus" class="status-dot off" title="ATEM connection"></span>
+
+    <label class="master-toggle">
+      <input id="masterEnable" type="checkbox" />
+      Auto-Switch Active
+    </label>
+  </div>
+</header>
+
+<section id="statusBar">
+  <div>Active Mic: <strong id="activeMic">—</strong></div>
+  <div>Active Camera: <strong id="activeCamera">—</strong></div>
+  <div id="log"></div>
+</section>
+
+<section id="audioDeviceSection" class="panel">
+  <h2>Audio Device</h2>
+  <div class="row">
+    <label>Input device
+      <select id="deviceSelect"></select>
+    </label>
+    <label>Channel count <input id="channelCount" type="number" min="1" max="32" /></label>
+    <label>Sample rate <input id="sampleRate" type="number" step="1" /></label>
+    <button id="applyAudioBtn">Apply &amp; Restart Capture</button>
+  </div>
+</section>
+
+<section id="micsSection" class="panel">
+  <h2>Mics</h2>
+  <div id="micStrips"></div>
+</section>
+
+<section id="camerasSection" class="panel">
+  <h2>Cameras</h2>
+  <div id="cameraStrips"></div>
+</section>
+
+<section id="globalSection" class="panel">
+  <h2>Global Timing &amp; Behavior</h2>
+  <div class="row">
+    <label>Attack (ms) <input id="attackMs" type="number" /></label>
+    <label>Release hold (ms) <input id="releaseHoldMs" type="number" /></label>
+    <label>Min shot hold (ms) <input id="minShotHoldMs" type="number" /></label>
+    <label>Hysteresis (dB) <input id="hysteresisDb" type="number" /></label>
+  </div>
+  <div class="row">
+    <label>Transition
+      <select id="transitionType">
+        <option value="cut">Cut</option>
+        <option value="auto">Auto</option>
+      </select>
+    </label>
+    <label>Auto duration (frames) <input id="autoDurationFrames" type="number" /></label>
+    <label>Crosstalk window (ms) <input id="crosstalkWindowMs" type="number" /></label>
+    <label>Crosstalk bias camera
+      <select id="crosstalkBiasCameraId"></select>
+    </label>
+  </div>
+</section>
+
+<section id="presetsSection" class="panel">
+  <h2>Presets</h2>
+  <div class="row">
+    <input id="presetName" type="text" placeholder="preset name" />
+    <button id="savePresetBtn">Save Current as Preset</button>
+    <select id="presetList"></select>
+    <button id="loadPresetBtn">Load Selected</button>
+  </div>
+</section>
+
+<footer>
+  <button id="saveConfigBtn">Save Config</button>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

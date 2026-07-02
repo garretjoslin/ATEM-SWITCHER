@@ -1,0 +1,42 @@
+{
+  "atem": {
+    "ip": "192.168.1.240"
+  },
+  "audioDevice": {
+    "type": "system",
+    "deviceId": null,
+    "sampleRate": 48000,
+    "channelCount": 8
+  },
+  "cameras": [
+    { "id": "cam1", "name": "Cam 1", "atemInput": 1 },
+    { "id": "cam2", "name": "Cam 2", "atemInput": 2 },
+    { "id": "cam3", "name": "Cam 3", "atemInput": 3 },
+    { "id": "cam4", "name": "Cam 4", "atemInput": 4 },
+    { "id": "cam5", "name": "Cam 5", "atemInput": 5 },
+    { "id": "cam6", "name": "Wide / Cutaway", "atemInput": 6 }
+  ],
+  "mics": [
+    { "id": "mic1", "name": "Mic 1", "sourceType": "system", "channelIndex": 0, "enabled": true, "thresholdDb": -35, "priority": 1, "cameraId": "cam1" },
+    { "id": "mic2", "name": "Mic 2", "sourceType": "system", "channelIndex": 1, "enabled": true, "thresholdDb": -35, "priority": 1, "cameraId": "cam2" },
+    { "id": "mic3", "name": "Mic 3", "sourceType": "system", "channelIndex": 2, "enabled": true, "thresholdDb": -35, "priority": 1, "cameraId": "cam3" },
+    { "id": "mic4", "name": "Mic 4", "sourceType": "system", "channelIndex": 3, "enabled": true, "thresholdDb": -35, "priority": 1, "cameraId": "cam4" },
+    { "id": "mic5", "name": "Mic 5", "sourceType": "system", "channelIndex": 4, "enabled": true, "thresholdDb": -35, "priority": 1, "cameraId": "cam5" },
+    { "id": "mic6", "name": "Mic 6", "sourceType": "system", "channelIndex": 5, "enabled": true, "thresholdDb": -35, "priority": 1, "cameraId": "cam6" },
+    { "id": "mic7", "name": "Mic 7", "sourceType": "system", "channelIndex": 6, "enabled": true, "thresholdDb": -35, "priority": 1, "cameraId": "cam6" },
+    { "id": "mic8", "name": "Mic 8", "sourceType": "system", "channelIndex": 7, "enabled": true, "thresholdDb": -35, "priority": 1, "cameraId": "cam6" }
+  ],
+  "global": {
+    "enabled": false,
+    "attackMs": 150,
+    "releaseHoldMs": 2500,
+    "minShotHoldMs": 2000,
+    "hysteresisDb": 4,
+    "crosstalkBiasCameraId": "cam6",
+    "crosstalkWindowMs": 400,
+    "transition": {
+      "type": "cut",
+      "autoDurationFrames": 15
+    }
+  }
+}
