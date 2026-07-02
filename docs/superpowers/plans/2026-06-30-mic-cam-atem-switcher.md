@@ -521,7 +521,7 @@ def test_nobody_talking_holds_last_shot():
     assert atem.calls == [("cut", 1)]
 
     engine.update_levels({"mic1": -80}, now_ms=400)  # goes silent, still in releaseHold
-    engine.update_levels({"mic1": -80}, now_ms=350)
+    engine.update_levels({"mic1": -80}, now_ms=500)  # past releaseHoldMs; nobody talking; shot holds
     assert atem.calls == [("cut", 1)]
 ```
 
