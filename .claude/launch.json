@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mic-cam-switcher",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": [
+        "-c",
+        "cd \"/Users/joslin/Documents/Claude/Projects/Live ATEM Pod cutting\" && exec .venv/bin/python -u -m uvicorn app.main:app --host 127.0.0.1 --port 4590 --log-level info"
+      ],
+      "port": 4590
+    }
+  ]
+}
