@@ -59,3 +59,80 @@ def test_tick_listener_receives_snapshot():
     assert snapshots[0]["mics"]["mic1"]["level"] == -20
     assert snapshots[0]["enabled"] is True
     assert snapshots[0]["stalled"] is False
+
+
+def test_highest_priority_mic_wins_and_cuts_atem():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    cfg = make_engine_config()
+    cfg["mics"][1]["priority"] = 5
+    cfg["global"]["crosstalkBiasCameraId"] = None  # isolate winner selection from crosstalk bias
+    engine.set_config(cfg)
+
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=100)
+
+    assert engine.active_camera_id == "cam2"
+    assert atem.calls == [("cut", 2)]
+
+
+def test_tie_priority_breaks_on_higher_level():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    cfg = make_engine_config()
+    cfg["global"]["crosstalkBiasCameraId"] = None  # isolate tie-break from crosstalk bias
+    engine.set_config(cfg)
+
+    engine.update_levels({"mic1": -20, "mic2": -10}, now_ms=0)
+    engine.update_levels({"mic1": -20, "mic2": -10}, now_ms=100)
+
+    assert engine.active_camera_id == "cam2"
+
+
+def test_same_camera_updates_active_mic_without_atem_call():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    cfg = make_engine_config()
+    cfg["mics"][1]["cameraId"] = "cam1"  # both mics route to cam1
+    cfg["global"]["crosstalkBiasCameraId"] = None  # isolate same-camera handling from crosstalk bias
+    engine.set_config(cfg)
+
+    engine.update_levels({"mic1": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20}, now_ms=100)
+    assert atem.calls == [("cut", 1)]
+
+    engine.update_levels({"mic1": -20, "mic2": -10}, now_ms=200)  # mic2 rising, not yet talking
+    engine.update_levels({"mic1": -20, "mic2": -10}, now_ms=300)  # mic2 now talking and louder
+    assert engine.active_mic_id == "mic2"
+    assert atem.calls == [("cut", 1)]  # no new ATEM call, same camera
+
+
+def test_min_shot_hold_suppresses_rapid_camera_changes():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    engine.set_config(make_engine_config())
+
+    engine.update_levels({"mic1": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20}, now_ms=100)  # mic1 talks, cuts to cam1
+    assert atem.calls == [("cut", 1)]
+
+    # mic2 becomes louder and starts talking well within minShotHoldMs (500ms)
+    engine.update_levels({"mic1": -20, "mic2": -5}, now_ms=150)
+    engine.update_levels({"mic1": -20, "mic2": -5}, now_ms=250)  # mic2 talking now
+    assert atem.calls == [("cut", 1)]  # still gated, cam1 stays up
+
+    engine.update_levels({"mic1": -20, "mic2": -5}, now_ms=650)  # past minShotHoldMs from 100
+    assert atem.calls == [("cut", 1), ("cut", 2)]
+
+
+def test_nobody_talking_holds_last_shot():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    engine.set_config(make_engine_config())
+    engine.update_levels({"mic1": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20}, now_ms=100)
+    assert atem.calls == [("cut", 1)]
+
+    engine.update_levels({"mic1": -80}, now_ms=400)  # goes silent, still in releaseHold
+    engine.update_levels({"mic1": -80}, now_ms=350)
+    assert atem.calls == [("cut", 1)]

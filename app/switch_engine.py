@@ -93,7 +93,52 @@ class SwitchEngine:
                 state.clipping = bool(clipping_by_mic_id.get(mic["id"], False))
 
     def _decide_and_switch(self, now_ms):
-        pass  # filled in by Task 4
+        eligible = [m for m in self.config["mics"] if m["enabled"] and self.mic_state[m["id"]].talking]
+        if not eligible:
+            return  # hold last shot, nobody's talking
+
+        winner = None
+        for m in eligible:
+            if winner is None:
+                winner = m
+                continue
+            bp = winner.get("priority", 1)
+            mp = m.get("priority", 1)
+            if mp != bp:
+                winner = m if mp > bp else winner
+            else:
+                bl = self.mic_state[winner["id"]].level
+                ml = self.mic_state[m["id"]].level
+                winner = m if ml > bl else winner
+
+        self._apply_switch(now_ms, winner["id"], winner["cameraId"])
+
+    def _apply_switch(self, now_ms, mic_id, camera_id):
+        if camera_id == self.active_camera_id:
+            self.active_mic_id = mic_id
+            return
+        if now_ms - self.last_switch_at < self.config["global"]["minShotHoldMs"]:
+            return
+
+        camera = next((c for c in self.config["cameras"] if c["id"] == camera_id), None)
+        if camera is None:
+            return
+
+        transition = self.config["global"]["transition"]
+        if transition["type"] == "auto":
+            self.atem_controller.auto_to(camera["atemInput"])
+        else:
+            self.atem_controller.cut_to(camera["atemInput"])
+
+        self.active_mic_id = mic_id
+        self.active_camera_id = camera_id
+        self.last_switch_at = now_ms
+        self._emit_switch({
+            "micId": mic_id,
+            "cameraId": camera_id,
+            "atemInput": camera["atemInput"],
+            "at": now_ms,
+        })
 
     def _emit_tick(self):
         snapshot = self._snapshot()
