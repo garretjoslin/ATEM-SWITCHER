@@ -246,3 +246,39 @@ def test_adaptive_threshold_window_prunes_old_samples():
     engine.update_levels({"mic1": -90}, now_ms=5000)
     state = engine.mic_state["mic1"]
     assert all(t >= 4000 for t, _ in state.noise_floor_samples)
+
+
+def test_mark_stalled_sets_flag_and_holds_shot():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    engine.set_config(make_engine_config())
+    engine.update_levels({"mic1": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20}, now_ms=100)
+    assert atem.calls == [("cut", 1)]
+
+    snapshots = []
+    engine.on_tick(snapshots.append)
+    engine.mark_stalled(now_ms=200)
+
+    assert snapshots[-1]["stalled"] is True
+    assert atem.calls == [("cut", 1)]  # no new ATEM call while stalled
+    assert engine.mic_state["mic1"].talking is True  # frozen, not reset to silence
+
+
+def test_stalled_flag_clears_on_next_real_update():
+    engine = SwitchEngine(FakeAtemController())
+    engine.set_config(make_engine_config())
+    engine.mark_stalled(now_ms=0)
+    snapshots = []
+    engine.on_tick(snapshots.append)
+    engine.update_levels({"mic1": -80}, now_ms=100)
+    assert snapshots[-1]["stalled"] is False
+
+
+def test_clipping_flag_surfaces_in_snapshot():
+    engine = SwitchEngine(FakeAtemController())
+    engine.set_config(make_engine_config())
+    snapshots = []
+    engine.on_tick(snapshots.append)
+    engine.update_levels({"mic1": -3}, clipping_by_mic_id={"mic1": True}, now_ms=0)
+    assert snapshots[-1]["mics"]["mic1"]["clipping"] is True

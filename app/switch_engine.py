@@ -34,6 +34,12 @@ class SwitchEngine:
     def on_switch(self, callback):
         self._switch_listeners.append(callback)
 
+    def mark_stalled(self, now_ms=None):
+        if now_ms is None:
+            now_ms = time.time() * 1000
+        self._stalled = True
+        self._emit_tick()
+
     def set_config(self, config):
         self.config = config
         for mic in config["mics"]:
