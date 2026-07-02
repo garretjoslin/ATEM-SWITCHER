@@ -343,3 +343,33 @@ def test_adaptive_threshold_enabled_together_with_crosstalk_bias():
     engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=500)
     engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=600)  # both talking, attackMs=100
     assert engine.active_camera_id == "cam3"  # crosstalk bias wins over either mic's own camera
+
+
+def test_switch_event_includes_latency_since_trigger():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    engine.set_config(make_engine_config())
+    events = []
+    engine.on_switch(events.append)
+
+    engine.update_levels({"mic1": -20}, now_ms=1000)  # above_since = 1000
+    engine.update_levels({"mic1": -20}, now_ms=1100)  # talking=True, cuts at 1100
+
+    assert len(events) == 1
+    assert events[0]["latencyMs"] == 100
+
+
+def test_crosstalk_switch_event_has_no_latency():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    engine.set_config(make_engine_config())
+    events = []
+    engine.on_switch(events.append)
+
+    # both mics cross the attack threshold together -> the crosstalk cut is the first,
+    # un-gated cut (mic_id=None), so its event carries no per-mic trigger latency
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=100)  # crosstalk fires (cam3, mic_id=None)
+
+    crosstalk_events = [e for e in events if e["cameraId"] == "cam3"]
+    assert crosstalk_events[0]["latencyMs"] is None

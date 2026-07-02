@@ -178,6 +178,12 @@ class SwitchEngine:
         else:
             self.atem_controller.cut_to(camera["atemInput"])
 
+        latency_ms = None
+        if mic_id is not None:
+            trigger_state = self.mic_state.get(mic_id)
+            if trigger_state and trigger_state.above_since is not None:
+                latency_ms = now_ms - trigger_state.above_since
+
         self.active_mic_id = mic_id
         self.active_camera_id = camera_id
         self.last_switch_at = now_ms
@@ -186,6 +192,7 @@ class SwitchEngine:
             "cameraId": camera_id,
             "atemInput": camera["atemInput"],
             "at": now_ms,
+            "latencyMs": latency_ms,
         })
 
     def _emit_tick(self):
