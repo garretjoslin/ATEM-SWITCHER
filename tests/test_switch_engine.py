@@ -282,3 +282,64 @@ def test_clipping_flag_surfaces_in_snapshot():
     engine.on_tick(snapshots.append)
     engine.update_levels({"mic1": -3}, clipping_by_mic_id={"mic1": True}, now_ms=0)
     assert snapshots[-1]["mics"]["mic1"]["clipping"] is True
+
+
+def test_crosstalk_gated_by_min_shot_hold_then_fires_on_fresh_overlap():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    engine.set_config(make_engine_config())  # minShotHoldMs=500, crosstalkWindowMs=300, releaseHoldMs=200
+
+    engine.update_levels({"mic1": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20}, now_ms=100)  # cam1 up, lastSwitchAt=100
+    assert atem.calls == [("cut", 1)]
+
+    # mic2 joins within the crosstalk window, but min-shot-hold (500ms) blocks the wide cut
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=150)
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=250)  # crosstalk detected, but gated
+    assert atem.calls == [("cut", 1)]
+    assert engine.active_camera_id == "cam1"
+
+    # both go quiet long enough to stop talking (releaseHoldMs=200)
+    engine.update_levels({"mic1": -80, "mic2": -80}, now_ms=300)
+    engine.update_levels({"mic1": -80, "mic2": -80}, now_ms=520)  # both stopped talking
+
+    # both re-start talking together after min-shot-hold has passed -> fresh crosstalk fires
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=600)
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=700)  # both talking again, fresh talk-starts
+    assert atem.calls == [("cut", 1), ("cut", 3)]
+    assert engine.active_camera_id == "cam3"
+
+
+def test_hysteresis_blocks_steal_right_as_release_hold_expires():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    engine.set_config(make_engine_config())  # releaseHoldMs=200, hysteresisDb=4
+
+    engine.update_levels({"mic1": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20}, now_ms=100)  # mic1 active
+    engine.update_levels({"mic1": -20}, now_ms=700)  # past minShotHoldMs
+
+    # mic1 drops just below threshold but stays within releaseHoldMs of talking=True;
+    # mic2 is louder but only by 3dB (< hysteresisDb of 4), so mic1 keeps the shot
+    engine.update_levels({"mic1": -36, "mic2": -33}, now_ms=700)
+    engine.update_levels({"mic1": -36, "mic2": -33}, now_ms=850)  # still < 200ms since below_since
+    assert engine.active_camera_id == "cam1"
+
+
+def test_adaptive_threshold_enabled_together_with_crosstalk_bias():
+    atem = FakeAtemController()
+    engine = SwitchEngine(atem)
+    cfg = make_engine_config()
+    cfg["global"]["advanced"]["noiseFloorAdaptive"] = {
+        "enabled": True, "marginDb": 5, "adaptWindowSec": 1,
+    }
+    engine.set_config(cfg)
+
+    # settle noise floor near -40 for both mics
+    for t in range(0, 500, 50):
+        engine.update_levels({"mic1": -40, "mic2": -40}, now_ms=t)
+
+    # both mics jump to -20 (well above -40+5=-35 effective threshold) within the crosstalk window
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=500)
+    engine.update_levels({"mic1": -20, "mic2": -20}, now_ms=600)  # both talking, attackMs=100
+    assert engine.active_camera_id == "cam3"  # crosstalk bias wins over either mic's own camera
