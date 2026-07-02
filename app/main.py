@@ -78,7 +78,7 @@ def start_audio():
         state["audio_source"].stop()
         state["audio_source"] = None
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     audio_queue = asyncio.Queue()
     cfg = state["config"]
     adv = cfg["global"].get("advanced", {})
@@ -217,7 +217,7 @@ def get_status():
 
 
 @app.post("/api/config/apply-audio")
-def apply_audio():
+async def apply_audio():
     start_audio()
     return {"ok": True}
 

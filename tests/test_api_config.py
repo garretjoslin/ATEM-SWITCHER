@@ -112,3 +112,26 @@ def test_mark_start_then_export_edl_succeeds(client, tmp_path, monkeypatch):
     res = client.get("/api/export/edl", params={"from": 0, "to": 5000})
     assert res.status_code == 200
     assert "TITLE:" in res.text
+
+
+def test_apply_audio_runs_on_event_loop(client, monkeypatch):
+    # Regression guard: /api/config/apply-audio must run on the event loop, not a
+    # threadpool worker. As a sync `def` route it dispatched to an AnyIO worker thread
+    # where asyncio.get_event_loop()/create_task() raise RuntimeError. Mock the audio
+    # source so no hardware is touched; we only assert the event-loop plumbing works.
+    import app.main as main_module
+
+    class _FakeSource:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(main_module, "SystemAudioSource", _FakeSource)
+    res = client.post("/api/config/apply-audio")
+    assert res.status_code == 200
+    assert res.json() == {"ok": True}
