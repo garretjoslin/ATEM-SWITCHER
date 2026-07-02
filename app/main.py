@@ -1,13 +1,17 @@
 # app/main.py
 import asyncio
+import json
 import os
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
+from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from app import config as config_store
+from app import switch_log
+from app.export.edl_export import build_cmx3600_edl, EdlExportError
 
 APP_DIR = Path(__file__).resolve().parent.parent
 
@@ -34,6 +38,36 @@ atem_controller = AtemController()
 
 switch_engine = SwitchEngine(atem_controller)
 switch_engine.set_config(state["config"])
+
+ws_clients: set[WebSocket] = set()
+
+
+async def broadcast(msg_type, payload):
+    msg = json.dumps({"type": msg_type, "payload": payload})
+    dead = []
+    for ws in ws_clients:
+        try:
+            await ws.send_text(msg)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        ws_clients.discard(ws)
+
+
+def _on_tick(snapshot):
+    asyncio.create_task(broadcast("tick", snapshot))
+
+
+def _on_switch(evt):
+    asyncio.create_task(broadcast("switch", evt))
+    timecode = None
+    if state["config"]["timecode"]["enabled"] and state.get("ltc_reader"):
+        timecode = state["ltc_reader"].current_timecode()
+    switch_log.append_entry(evt["cameraId"], evt["atemInput"], int(evt["at"]), timecode=timecode)
+
+
+switch_engine.on_tick(_on_tick)
+switch_engine.on_switch(_on_switch)
 
 audio_queue = None
 
@@ -217,6 +251,41 @@ async def calibrate(mic_id: str):
     }
 
 
+@app.websocket("/ws")
+async def ws_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    ws_clients.add(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_clients.discard(websocket)
+
+
+@app.post("/api/timecode/mark-start")
+def mark_start():
+    state["record_start_epoch"] = int(time.time() * 1000)
+    return {"ok": True, "recordStartEpoch": state["record_start_epoch"]}
+
+
+@app.get("/api/export/edl")
+def export_edl(from_ms: int = Query(..., alias="from"), to_ms: int = Query(..., alias="to")):
+    entries = switch_log.read_entries(from_ms=from_ms, to_ms=to_ms)
+    cameras_by_id = {c["id"]: c for c in state["config"]["cameras"]}
+    fps = state["config"]["global"]["timelineFps"]
+    mode = "timecode" if state["config"]["timecode"]["enabled"] else "wallclock"
+    try:
+        edl_text = build_cmx3600_edl(
+            entries, cameras_by_id, fps, mode, to_ms=to_ms, record_start_epoch=state["record_start_epoch"],
+        )
+    except EdlExportError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return PlainTextResponse(
+        edl_text, media_type="application/x-cmx3600",
+        headers={"Content-Disposition": "attachment; filename=export.edl"},
+    )
+
+
 @app.on_event("startup")
 async def on_startup():
     if os.environ.get("MIC_CAM_SKIP_STARTUP"):
@@ -226,3 +295,6 @@ async def on_startup():
     asyncio.create_task(atem_controller.maintain_connection())
     start_audio()
     asyncio.create_task(_watchdog_loop())
+
+
+app.mount("/", StaticFiles(directory=str(APP_DIR / "web"), html=True), name="web")

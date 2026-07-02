@@ -88,3 +88,27 @@ def test_atem_connect_persists_ip(client):
     res = client.post("/api/atem/connect", json={"ip": "10.0.0.5"})
     assert res.status_code == 200
     assert client.get("/api/config").json()["atem"]["ip"] == "10.0.0.5"
+
+
+def test_export_edl_without_mark_start_returns_400(client, tmp_path, monkeypatch):
+    from app import switch_log
+    log_path = tmp_path / "switch_log.jsonl"
+    switch_log.append_entry("cam1", 1, 1000, path=log_path)
+    monkeypatch.setattr(switch_log, "DEFAULT_LOG_PATH", log_path)
+
+    res = client.get("/api/export/edl", params={"from": 0, "to": 5000})
+    assert res.status_code == 400
+
+
+def test_mark_start_then_export_edl_succeeds(client, tmp_path, monkeypatch):
+    from app import switch_log
+    log_path = tmp_path / "switch_log.jsonl"
+    switch_log.append_entry("cam1", 1, 1000, path=log_path)
+    monkeypatch.setattr(switch_log, "DEFAULT_LOG_PATH", log_path)
+
+    res = client.post("/api/timecode/mark-start")
+    assert res.status_code == 200
+
+    res = client.get("/api/export/edl", params={"from": 0, "to": 5000})
+    assert res.status_code == 200
+    assert "TITLE:" in res.text
