@@ -373,3 +373,47 @@ def test_crosstalk_switch_event_has_no_latency():
 
     crosstalk_events = [e for e in events if e["cameraId"] == "cam3"]
     assert crosstalk_events[0]["latencyMs"] is None
+
+
+class _MERecordingAtem:
+    """Fake that records the me_index passed to cut/auto (the default FakeAtemController drops it)."""
+    def __init__(self, connected=True):
+        self.connected = connected
+        self.calls = []
+
+    def cut_to(self, atem_input, me_index=0):
+        self.calls.append(("cut", atem_input, me_index))
+
+    def auto_to(self, atem_input, me_index=0):
+        self.calls.append(("auto", atem_input, me_index))
+
+
+def test_cut_uses_configured_me_index():
+    atem = _MERecordingAtem()
+    engine = SwitchEngine(atem)
+    cfg = make_engine_config()
+    cfg["atem"] = {"ip": "1.2.3.4", "meIndex": 2}  # multi-M/E Constellation targets ME 2
+    cfg["global"]["crosstalkBiasCameraId"] = None
+    engine.set_config(cfg)
+
+    engine.update_levels({"mic1": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20}, now_ms=100)
+
+    assert atem.calls == [("cut", 1, 2)]  # atemInput 1, meIndex 2 — not the ME 0 default
+
+
+def test_engine_holds_and_logs_nothing_while_atem_disconnected():
+    atem = _MERecordingAtem(connected=False)
+    engine = SwitchEngine(atem)
+    cfg = make_engine_config()
+    cfg["global"]["crosstalkBiasCameraId"] = None
+    engine.set_config(cfg)
+    events = []
+    engine.on_switch(events.append)
+
+    engine.update_levels({"mic1": -20}, now_ms=0)
+    engine.update_levels({"mic1": -20}, now_ms=100)  # would cut if the ATEM were connected
+
+    assert atem.calls == []                    # no ATEM command issued
+    assert events == []                        # no switch emitted -> nothing logged/broadcast
+    assert engine.active_camera_id is None     # last shot held

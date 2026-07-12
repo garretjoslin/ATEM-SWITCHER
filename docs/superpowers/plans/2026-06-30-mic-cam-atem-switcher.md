@@ -557,6 +557,12 @@ Replace `_decide_and_switch` in `app/switch_engine.py`:
         self._apply_switch(now_ms, winner["id"], winner["cameraId"])
 
     def _apply_switch(self, now_ms, mic_id, camera_id):
+        # ATEM disconnected: hold the last shot, issue no cuts, and emit nothing
+        # (design spec error handling). Emitting here would log/broadcast cuts that
+        # never went to air and corrupt a later EDL export. getattr default keeps
+        # unit tests (FakeAtemController has no `connected` attr) behaving as connected.
+        if not getattr(self.atem_controller, "connected", True):
+            return
         if camera_id == self.active_camera_id:
             self.active_mic_id = mic_id
             return
@@ -567,11 +573,12 @@ Replace `_decide_and_switch` in `app/switch_engine.py`:
         if camera is None:
             return
 
+        me_index = self.config.get("atem", {}).get("meIndex", 0)
         transition = self.config["global"]["transition"]
         if transition["type"] == "auto":
-            self.atem_controller.auto_to(camera["atemInput"])
+            self.atem_controller.auto_to(camera["atemInput"], me_index)
         else:
-            self.atem_controller.cut_to(camera["atemInput"])
+            self.atem_controller.cut_to(camera["atemInput"], me_index)
 
         self.active_mic_id = mic_id
         self.active_camera_id = camera_id
@@ -2751,14 +2758,15 @@ Expected: FAIL with `KeyError: 'latencyMs'`
 
 - [ ] **Step 3: Add latency calculation to `_apply_switch`**
 
-Replace the tail of `_apply_switch` in `app/switch_engine.py` (from the `transition = ...` line onward) with:
+Replace the tail of `_apply_switch` in `app/switch_engine.py` (from the `me_index = ...` line onward) with:
 
 ```python
+        me_index = self.config.get("atem", {}).get("meIndex", 0)
         transition = self.config["global"]["transition"]
         if transition["type"] == "auto":
-            self.atem_controller.auto_to(camera["atemInput"])
+            self.atem_controller.auto_to(camera["atemInput"], me_index)
         else:
-            self.atem_controller.cut_to(camera["atemInput"])
+            self.atem_controller.cut_to(camera["atemInput"], me_index)
 
         latency_ms = None
         if mic_id is not None:
