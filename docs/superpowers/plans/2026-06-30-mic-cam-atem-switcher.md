@@ -2457,7 +2457,12 @@ async def _watchdog_loop():
 
 @app.post("/api/config/apply-audio")
 async def apply_audio():  # async so start_audio() runs on the loop, not a threadpool worker
-    start_audio()
+    try:
+        start_audio()
+    except Exception as e:
+        # Audio device open failure (e.g. configured channelCount exceeds the device's
+        # channels) is reported to the caller, not fatal (design spec error-handling).
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
     return {"ok": True}
 
 
@@ -2500,7 +2505,12 @@ async def on_startup():
     if state["config"]["atem"]["ip"]:
         atem_controller.connect(state["config"]["atem"]["ip"])
     asyncio.create_task(atem_controller.maintain_connection())
-    start_audio()
+    try:
+        start_audio()
+    except Exception as e:
+        # Never let an audio-open failure abort ASGI startup (would kill the whole
+        # server). Log and continue; operator picks a valid device via the UI.
+        print(f"[startup] audio capture failed to start: {e}")
     asyncio.create_task(_watchdog_loop())
 ```
 

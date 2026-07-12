@@ -218,7 +218,13 @@ def get_status():
 
 @app.post("/api/config/apply-audio")
 async def apply_audio():
-    start_audio()
+    try:
+        start_audio()
+    except Exception as e:
+        # Audio device open failure (e.g. wrong channel count) is reported to the
+        # caller, not fatal — the engine simply has no levels until a valid device
+        # is picked. (design spec: "Audio device open failure ... doesn't crash".)
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
     return {"ok": True}
 
 
@@ -293,7 +299,13 @@ async def on_startup():
     if state["config"]["atem"]["ip"]:
         atem_controller.connect(state["config"]["atem"]["ip"])
     asyncio.create_task(atem_controller.maintain_connection())
-    start_audio()
+    try:
+        start_audio()
+    except Exception as e:
+        # Never let an audio-open failure abort ASGI startup (would kill the whole
+        # server). Log and continue; the operator picks a valid device via the UI,
+        # which calls /api/config/apply-audio to retry.
+        print(f"[startup] audio capture failed to start: {e}")
     asyncio.create_task(_watchdog_loop())
 
 

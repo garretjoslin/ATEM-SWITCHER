@@ -135,3 +135,26 @@ def test_apply_audio_runs_on_event_loop(client, monkeypatch):
     res = client.post("/api/config/apply-audio")
     assert res.status_code == 200
     assert res.json() == {"ok": True}
+
+
+def test_apply_audio_reports_device_open_failure_without_crashing(client, monkeypatch):
+    # Regression guard: opening the audio device can fail (e.g. the configured channel
+    # count exceeds the device's channels -> PortAudio "Invalid number of channels").
+    # That must be reported as a 500, not propagate and take down the process.
+    import app.main as main_module
+
+    class _FailingSource:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("Error opening InputStream: Invalid number of channels")
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(main_module, "SystemAudioSource", _FailingSource)
+    res = client.post("/api/config/apply-audio")
+    assert res.status_code == 500
+    assert res.json()["ok"] is False
+    assert "channels" in res.json()["error"]
