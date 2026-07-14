@@ -37,8 +37,16 @@ def main():
     print("connected.")
     print("switcher info:", controller.switcher.atemModel, controller.switcher.protocolVersion)
     print("inputs:")
-    for key, value in controller.switcher.inputProperties.items():
-        print(f"  {key}: {getattr(value, 'name', value)}")
+    # PyATEMMax exposes inputProperties as an ATEMValueDict (index-only, no .items()).
+    # Enumerate its backing dict best-effort so a formatting quirk never aborts the
+    # cut/auto test below, which is the real point of the smoke test.
+    try:
+        for source, props in controller.switcher.inputProperties._data.items():
+            name = getattr(props, "longName", "") or getattr(props, "shortName", "")
+            if name:
+                print(f"  {getattr(source, 'value', source)}: {name}")
+    except Exception as e:
+        print(f"  (could not enumerate inputs: {e})")
 
     print(f"issuing cut to input {test_input} ...")
     controller.cut_to(test_input)
