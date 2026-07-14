@@ -12,15 +12,59 @@ Python port of the Node.js `mic-cam-switcher` prototype (see `reference/`).
 - A multichannel input device visible to the OS (Sound Devices interface, or Dante
   Virtual Soundcard — both appear as ordinary PortAudio devices).
 
-## Setup
+## Quick start (one command)
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+./run.sh
+```
+
+Creates the virtualenv and installs dependencies on first run, then starts the server on
+`http://127.0.0.1:4590`. Override host/port: `HOST=0.0.0.0 PORT=8080 ./run.sh`
+(use `0.0.0.0` to reach it from other devices on the LAN).
+
+## Setup (manual)
+
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 4590
 ```
 
-Open `http://localhost:4590`.
+Open `http://localhost:4590`. Use Python 3.10+ (the code uses 3.10+ syntax); on Linux also
+install PortAudio for audio capture: `sudo apt install libportaudio2`.
+
+## Deploying & updating
+
+Install on a new machine:
+
+```bash
+git clone https://github.com/garretjoslin/ATEM-SWITCHER.git
+cd ATEM-SWITCHER
+./run.sh
+```
+
+Push a revision (dev machine):
+
+```bash
+# edit files, then:
+.venv/bin/python -m pytest -q          # keep the suite green
+git add -A && git commit -m "describe the change"
+git push
+```
+
+Pull a revision (deployed machine):
+
+```bash
+git pull
+.venv/bin/pip install -r requirements.txt   # only if requirements.txt changed
+./run.sh                                     # restart (Ctrl-C the old one first)
+```
+
+For fast local iteration, run with auto-reload so backend edits restart the server:
+`.venv/bin/python -m uvicorn app.main:app --reload --port 4590` (frontend edits under
+`web/` just need a browser refresh). Per-machine settings live in `config/live.json`
+(gitignored), so pulling never clobbers a machine's device/IP selection; presets in
+`config/presets/` are tracked and shared across machines.
 
 ## Before trusting it live: run the smoke test
 
@@ -66,3 +110,23 @@ testing against real gear.
 
 `config/default.json` is the template (never overwritten). `config/live.json` is the
 working copy (gitignored), written on save. Presets live in `config/presets/`.
+
+## Troubleshooting
+
+**ATEM won't connect (status dot stays red).** Control is over IP/UDP via PyATEMMax, so
+the machine must reach the switcher on the network. Check, in order:
+
+1. Confirm the ATEM's actual IP (Blackmagic ATEM Setup, or the unit's front-panel/menu).
+   The default in `config/default.json` is `192.168.1.240` — likely not yours.
+2. `ping <atem-ip>` from this machine. No reply → it's a network/subnet issue, not the app
+   (same subnet? right NIC? no VLAN/firewall between them?).
+3. Run the standalone probe — it prints exactly what the connection is doing:
+   `.venv/bin/python -m app.smoke_test <atem-ip>`. If this can't connect, the app can't either.
+4. Give it a few seconds — connection is asynchronous and the UI polls status every ~4s.
+
+## Roadmap / not yet implemented
+
+- **USB control of the ATEM.** The current control path is Ethernet/IP (PyATEMMax). USB
+  *audio* interfaces already work today — they enumerate as ordinary PortAudio input devices
+  and are selectable in the Audio Device panel. USB *switcher control* is a separate protocol
+  and would be added as an alternate transport behind the same `AtemController` interface.
