@@ -298,7 +298,7 @@ async def on_startup():
         return
     if state["config"]["atem"]["ip"]:
         atem_controller.connect(state["config"]["atem"]["ip"])
-    asyncio.create_task(atem_controller.maintain_connection())
+    # No reconnect task: PyATEMMax reconnects internally after this single connect().
     try:
         start_audio()
     except Exception as e:

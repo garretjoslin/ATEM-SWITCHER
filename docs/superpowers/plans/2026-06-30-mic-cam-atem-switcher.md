@@ -1768,7 +1768,6 @@ Hardware-dependent per the design spec's Testing section — validated via `app/
 
 ```python
 # app/atem_controller.py
-import asyncio
 import PyATEMMax
 
 
@@ -1778,6 +1777,7 @@ class AtemController:
         self.connected = False
         self.current_input = None
         self.ip = None
+        self._started = False  # True once switcher.connect() has spawned its comms threads
         self.switcher.registerEvent(self.switcher.atem.events.connect, self._on_connect)
         self.switcher.registerEvent(self.switcher.atem.events.disconnect, self._on_disconnect)
 
@@ -1789,11 +1789,28 @@ class AtemController:
         self.current_input = None
 
     def connect(self, ip):
+        # PyATEMMax.connect() spawns comms + event threads and reconnects internally
+        # forever — call it ONCE. Calling again without tearing down the previous attempt
+        # stacks threads sharing one UDP socket -> OSError EOPNOTSUPP. Disconnect first.
         self.ip = ip
+        if self._started:
+            try:
+                self.switcher.disconnect()
+            except Exception:
+                pass
+            self._started = False
         self.switcher.connect(ip)
+        self._started = True
 
     def disconnect(self):
-        self.switcher.disconnect()
+        if self._started:
+            try:
+                self.switcher.disconnect()
+            except Exception:
+                pass
+            self._started = False
+        self.connected = False
+        self.current_input = None
 
     def cut_to(self, atem_input, me_index=0):
         if not self.connected:
@@ -1815,22 +1832,13 @@ class AtemController:
 
     def get_status(self):
         return {"connected": self.connected, "ip": self.ip, "currentInput": self.current_input}
-
-    async def maintain_connection(self, poll_interval_sec=2, max_backoff_sec=30):
-        """Background reconnect-with-backoff loop; run as an asyncio task from main.py."""
-        backoff = poll_interval_sec
-        while True:
-            await asyncio.sleep(poll_interval_sec)
-            if self.ip and not self.connected:
-                try:
-                    self.switcher.connect(self.ip)
-                except Exception:
-                    pass
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, max_backoff_sec)
-            else:
-                backoff = poll_interval_sec
 ```
+
+**No reconnect loop:** PyATEMMax's comms thread keeps the connection alive and retries
+forever after a single `connect()`. An external reconnect loop that re-calls
+`switcher.connect()` only stacks duplicate comms threads that race over the one UDP socket
+into `OSError: [Errno 102] Operation not supported on socket` — so reconnection is left
+entirely to PyATEMMax, and `import asyncio` is not needed in this module.
 
 - [ ] **Step 2: Commit**
 
@@ -2359,7 +2367,7 @@ async def on_startup():
         return
     if state["config"]["atem"]["ip"]:
         atem_controller.connect(state["config"]["atem"]["ip"])
-    asyncio.create_task(atem_controller.maintain_connection())
+    # No reconnect task — PyATEMMax reconnects internally after this single connect().
 ```
 
 - [ ] **Step 6: Run the full API test suite**
@@ -2511,7 +2519,7 @@ async def on_startup():
         return
     if state["config"]["atem"]["ip"]:
         atem_controller.connect(state["config"]["atem"]["ip"])
-    asyncio.create_task(atem_controller.maintain_connection())
+    # No reconnect task — PyATEMMax reconnects internally after this single connect().
     try:
         start_audio()
     except Exception as e:
