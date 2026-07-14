@@ -21,7 +21,7 @@
 </header>
 
 <section id="statusBar">
-  <div>Active Mic: <strong id="activeMic">—</strong></div>
+  <div>Active Channel: <strong id="activeMic">—</strong></div>
   <div>Active Camera: <strong id="activeCamera">—</strong></div>
   <div id="stalledIndicator" class="warn-badge hidden">AUDIO STALLED</div>
   <div id="log"></div>
@@ -40,11 +40,13 @@
 </section>
 
 <section id="micsSection" class="panel">
-  <h2>Mics</h2>
+  <h2>Channels</h2>
+  <p class="hint">One strip per audio channel on the selected device (channel 1 = strip 1).
+    Picking a device fills these in automatically; assign each channel to a camera.</p>
   <div id="micStrips"></div>
   <div class="row">
-    <button id="addMicBtn">Add Mic</button>
-    <button id="removeMicBtn">Remove Last Mic</button>
+    <button id="addMicBtn">Add Channel</button>
+    <button id="removeMicBtn">Remove Last Channel</button>
   </div>
 </section>
 

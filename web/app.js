@@ -1,5 +1,6 @@
 let config = null;
 let ws = null;
+let devices = [];  // cached /api/devices list, so the device picker can read channel counts
 
 const dbToPercent = (db) => {
   const clamped = Math.max(-60, Math.min(0, db));
@@ -38,9 +39,9 @@ function cameraSelect(className, selectedId, includeNone = false) {
 
 async function loadAll() {
   config = await fetchJSON('/api/config');
-  const devices = await fetchJSON('/api/devices').catch(() => []);
+  devices = await fetchJSON('/api/devices').catch(() => []);
   renderHeader();
-  renderAudioDevice(devices);
+  renderAudioDevice();
   renderMics();
   renderCameras();
   renderGlobal();
@@ -56,7 +57,7 @@ function renderHeader() {
   document.getElementById('masterEnable').checked = !!config.enabled;
 }
 
-function renderAudioDevice(devices) {
+function renderAudioDevice() {
   const sel = document.getElementById('deviceSelect');
   sel.replaceChildren(el('option', { value: '', text: 'Default input' }));
   devices.forEach((d) => {
@@ -64,8 +65,42 @@ function renderAudioDevice(devices) {
     if (config.audioDevice.deviceId === d.id) opt.selected = true;
     sel.appendChild(opt);
   });
-  document.getElementById('channelCount').value = config.audioDevice.channelCount;
+  const channelInput = document.getElementById('channelCount');
+  channelInput.value = config.audioDevice.channelCount;
   document.getElementById('sampleRate').value = config.audioDevice.sampleRate;
+
+  // Selecting a device sets the channel count from that device and populates one
+  // channel strip per physical channel (channel i = strip i). Existing strips keep
+  // their thresholds/camera assignments; extra strips are added or trimmed to fit.
+  sel.onchange = (e) => {
+    const dev = devices.find((d) => String(d.id) === e.target.value);
+    config.audioDevice.deviceId = dev ? dev.id : null;
+    if (dev) {
+      setChannelCount(dev.maxInputChannels);
+    }
+  };
+  // Manually editing the channel count also re-populates the strips to match.
+  channelInput.onchange = (e) => setChannelCount(parseInt(e.target.value, 10));
+}
+
+// Resize config.mics (the per-channel strips) to `n`, preserving existing entries.
+function setChannelCount(n) {
+  if (!Number.isFinite(n) || n < 0) return;
+  config.audioDevice.channelCount = n;
+  document.getElementById('channelCount').value = n;
+  while (config.mics.length < n) {
+    const idx = config.mics.length + 1;
+    config.mics.push({
+      id: nextId(config.mics, 'ch'),
+      name: `Channel ${idx}`,
+      enabled: true,
+      thresholdDb: -35,
+      priority: 1,
+      cameraId: config.cameras[0] ? config.cameras[0].id : null,
+    });
+  }
+  while (config.mics.length > n) config.mics.pop();
+  renderMics();
 }
 
 function renderMics() {
@@ -293,20 +328,14 @@ function nextId(items, prefix) {
   return `${prefix}${n}`;
 }
 
+// Add/Remove a channel keeps the channel count and the strips in lockstep.
 document.getElementById('addMicBtn').addEventListener('click', () => {
-  if (config.mics.length >= 10) return;
-  const id = nextId(config.mics, 'mic');
-  config.mics.push({
-    id, name: `Mic ${config.mics.length + 1}`, enabled: true, thresholdDb: -35, priority: 1,
-    cameraId: config.cameras[0] ? config.cameras[0].id : null,
-  });
-  renderMics();
+  setChannelCount(config.mics.length + 1);
 });
 
 document.getElementById('removeMicBtn').addEventListener('click', () => {
   if (config.mics.length === 0) return;
-  config.mics.pop();
-  renderMics();
+  setChannelCount(config.mics.length - 1);
 });
 
 document.getElementById('addCameraBtn').addEventListener('click', () => {
