@@ -19,13 +19,16 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 
-# Create the venv + install deps on first run only.
-if [ ! -d .venv ]; then
+# Create the venv + install deps if missing OR broken/incomplete.
+# (Check for the interpreter itself, not just the .venv folder — a half-created venv
+# would otherwise be skipped and then fail at exec time.)
+if [ ! -x .venv/bin/python ]; then
   echo "Creating virtualenv with $PY ..."
+  rm -rf .venv
   "$PY" -m venv .venv
-  .venv/bin/pip install --upgrade pip >/dev/null
+  .venv/bin/python -m pip install --upgrade pip >/dev/null
   echo "Installing dependencies ..."
-  .venv/bin/pip install -r requirements.txt
+  .venv/bin/python -m pip install -r requirements.txt
 fi
 
 HOST="${HOST:-127.0.0.1}"
