@@ -62,7 +62,10 @@ function renderAudioDevice() {
   sel.replaceChildren(el('option', { value: '', text: 'Default input' }));
   devices.forEach((d) => {
     const opt = el('option', { value: String(d.id), text: `${d.name} (${d.maxInputChannels} ch)` });
-    if (config.audioDevice.deviceId === d.id) opt.selected = true;
+    // Compare as numbers (config may carry an int or a stringy id), but never let a
+    // null/undefined deviceId coerce to 0 and wrongly select device 0.
+    const savedId = config.audioDevice.deviceId;
+    if (savedId !== null && savedId !== undefined && Number(savedId) === d.id) opt.selected = true;
     sel.appendChild(opt);
   });
   const channelInput = document.getElementById('channelCount');
@@ -315,7 +318,11 @@ async function refreshPresets() {
 }
 
 function collectConfig() {
-  config.audioDevice.deviceId = document.getElementById('deviceSelect').value || null;
+  // deviceId must be an INTEGER PortAudio index (or null for default). The <select>
+  // value is always a string, and the empty string means "Default input" — note "0"
+  // is a valid device index, so guard on '' explicitly rather than falsiness.
+  const devVal = document.getElementById('deviceSelect').value;
+  config.audioDevice.deviceId = devVal === '' ? null : parseInt(devVal, 10);
   config.audioDevice.channelCount = parseInt(document.getElementById('channelCount').value, 10);
   config.audioDevice.sampleRate = parseInt(document.getElementById('sampleRate').value, 10);
   return config;

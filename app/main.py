@@ -92,10 +92,18 @@ def start_audio():
         ltc_channel_index = cfg["timecode"]["channelIndex"]
     state["ltc_reader"] = ltc_reader
 
+    # deviceId must be an int PortAudio index (or None for default). Coerce defensively:
+    # sounddevice treats a numeric *string* like "0" as a device-name match ("no input
+    # device matching '0'") rather than index 0, so a stringy id from an old saved config
+    # would silently fail to open the right device.
+    device_id = cfg["audioDevice"]["deviceId"]
+    if isinstance(device_id, str):
+        device_id = int(device_id) if device_id.strip().lstrip("-").isdigit() else (device_id or None)
+
     source = SystemAudioSource(
         loop=loop,
         queue=audio_queue,
-        device_id=cfg["audioDevice"]["deviceId"],
+        device_id=device_id,
         sample_rate=cfg["audioDevice"]["sampleRate"],
         channel_count=cfg["audioDevice"]["channelCount"],
         speech_band_filter=speech_filter_cfg,
